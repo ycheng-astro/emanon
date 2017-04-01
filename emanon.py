@@ -66,6 +66,7 @@ def __gauss_tau__(axis,p):
 	p: [T, Ntot, fsky, sigma, K]
 	"""
 	T= p[0]; Ntot = p[1]; fsky = p[2]; sigma = p[3]; K = p[4]
+
 	phijk = 1/sqrt(2 * pi) / (sigma * 1e9) * np.exp(-0.5 * (axis - fsky)**2 / sigma**2)
 	Ajk = (64 * pi**4 * (ch3cn_info['frest'][K] * 1e9)**3 * ch3cn_info['mu']**2 / 3 / h / c**3) * (J**2 - K**2) / (J * (2*J + 1))
 	gjk = (2*J + 1) * ch3cn_info['gk'][K]
@@ -76,6 +77,20 @@ def __gauss_tau__(axis,p):
 	f = T * (1 - np.exp(-1.0 * tau))	
 
 	return f
+
+def __tau__(Ntot, sigma, T, K):
+	"""
+	Calculate opacity at the line center
+	"""
+	phijk = 1/sqrt(2 * pi) / (sigma * 1e9)
+	Ajk = (64 * pi**4 * (ch3cn_info['frest'][K] * 1e9)**3 * ch3cn_info['mu']**2 / 3 / h / c**3) * (J**2 - K**2) / (J * (2*J + 1))
+	gjk = (2*J + 1) * ch3cn_info['gk'][K]
+	Q = 3.89 * T**1.5 / (-1.0 * expm1(-524.8 / T))**2
+	Njk = Ntot * (gjk / Q) * exp(-1.0 * ch3cn_info['E'][K] / T)
+
+	tau = (h * c**2 * Njk * Ajk) / (8 * pi * ch3cn_info['frest'][K] * 1e9 * k_B * T) * phijk
+
+	return tau
 
 def __model_11__(params, faxis, spec):
 	"""
@@ -206,8 +221,8 @@ def fit_spec(spec, faxis, Jupp=12, K_fit=7, cutoff=0.009, varyf=2, interactive=T
 		if vlsr1 != 0:
 			params.add('Ntot', value=1e15, min=0, max=1e25)
 			params.add('T', value=100, min=10)
-			params.add('sigma', value=0.0035, vary=False)
-			#params.add('sigma', value=0.0027, min=0, max=0.050)
+			#params.add('sigma', value=0.0035, vary=False)
+			params.add('sigma', value=0.0027, min=0, max=0.04)
 			if varyf > 0:
 				params.add('fsky', value=fsky_init, min=fsky_init-varyf*chanwidth, \
 				max=fsky0_init+varyf*chanwidth)
@@ -233,11 +248,12 @@ def fit_spec(spec, faxis, Jupp=12, K_fit=7, cutoff=0.009, varyf=2, interactive=T
 			if vlsr1 != 0 and vlsr2 != 0:
 				print 'Reserved for two-component fitting.'
 			elif vlsr1 != 0 or vlsr2 != 0:
-				plt.text(0.02, 0.80, r'T$_{rot}$=%.1f($\pm$%.1f) K' % (params['T'].value,params['T'].stderr), transform=ax.transAxes, color='r', fontsize=15)
-				plt.text(0.02, 0.75, r'N$_{tot}$=%.2e($\pm$%.2e) cm$^{-2}$' % (params['Ntot'].value,params['Ntot'].stderr), transform=ax.transAxes, color='r', fontsize=15)
-				plt.text(0.02, 0.70, r'FWHM=%.2f($\pm$%.2f) km/s' % (c*params['sigma'].value/ch3cn_info['frest'][0]/1e5*2.355,c*params['sigma'].stderr/ch3cn_info['frest'][0]/1e5*2.355), transform=ax.transAxes, color='r', fontsize=15)
+				plt.text(0.02, 0.80, r'T$_{rot}$=%.1f($\pm$%.1f) K' % (result.params['T'].value,result.params['T'].stderr), transform=ax.transAxes, color='r', fontsize=15)
+				plt.text(0.02, 0.75, r'N$_{tot}$=%.2e($\pm$%.2e) cm$^{-2}$' % (result.params['Ntot'].value,result.params['Ntot'].stderr), transform=ax.transAxes, color='r', fontsize=15)
+				plt.text(0.02, 0.70, r'FWHM=%.2f($\pm$%.2f) km/s' % (c*result.params['sigma'].value/ch3cn_info['frest'][0]/1e5*2.355,c*result.params['sigma'].stderr/ch3cn_info['frest'][0]/1e5*2.355), transform=ax.transAxes, color='r', fontsize=15)
+				plt.text(0.02, 0.65, r'$\tau_\mathrm{K=0}$=%.1e' % (__tau__(result.params['Ntot'].value,result.params['sigma'].value,result.params['T'].value,0)), transform=ax.transAxes, color='r', fontsize=15)
 			plt.legend()
-			plt.show()
+			plt.draw()
 			print 'Is the fitting ok? y/n'
 			yn = raw_input()
 			if yn == 'y':
@@ -257,17 +273,17 @@ ch3cn_info = __ch3cn_init__()
 
 # Read the ASCII file.
 # The frequency axis is assumed to be in GHz, and the y axis is T_B in K.
-spec, faxis = __readascii__('ch3cn_sgrb2.txt')
-#spec, faxis = __readascii__('dustridge.dat')
-sourcename = 'Sgr B2(M)'
+#spec, faxis = __readascii__('ch3cn_sgrb2.txt')
+spec, faxis = __readascii__('dustridge.txt')
+sourcename = 'Dust ridge core X'
 chanwidth = abs(faxis[0] - faxis[-1]) / len(faxis)
 print 'Channel width is %.4f GHz' % chanwidth
 print 'Channel number is %d' % len(faxis)
 
 # For SgrB2: flag negtiva channels
-spec[np.where(spec<0)] = 0
-spec = spec[50:390]
-faxis = faxis[50:390]
+#spec[np.where(spec<0)] = 0
+#spec = spec[50:390]
+#faxis = faxis[50:390]
 
 # This file is in Jy/beam so we convert it first:
 #spec = 1.224e6 * spec / (ch3cn_info['frest'][0])**2 / (3.3 * 3.2)
@@ -275,6 +291,8 @@ faxis = faxis[50:390]
 # Reverse the axis:
 #spec = spec[::-1]
 #faxis = faxis[::-1]
+
+spec +=0.1
 
 # Run the fitting:
 fit_spec(spec, faxis, Jupp=12, K_fit=8, cutoff=0.5, varyf=0, interactive=True, mode='single')
