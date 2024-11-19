@@ -73,10 +73,9 @@ def __gauss_tau__(axis,p):
 	Q = 3.89 * T**1.5 / (-1.0 * expm1(-524.8 / T))**2
 	Njk = Ntot * (gjk / Q) * exp(-1.0 * ch3cn_info['E'][K] / T)
 
-	tau = (h * c**2 * Njk * Ajk) / (8 * pi * ch3cn_info['frest'][K] * 1e9 * k_B * T) * phijk
-	f = T * (1 - np.exp(-1.0 * tau))	
+	tau = (h * c**2 * Njk * Ajk) / (8 * pi * ch3cn_info['frest'][K] * 1e9 * k_B * T) * phijk	
 
-	return f
+	return tau
 
 def __tau__(Ntot, sigma, T, K):
 	"""
@@ -105,10 +104,10 @@ def __model_11__(params, faxis, spec):
 
 	fsky_k = ch3cn_info['frest'] + (fsky - ch3cn_info['frest'][0])		
 
-	model = np.zeros(len(faxis))
+	tau = np.zeros(len(faxis))
 	for k in arange(Kladder):
-		model += __gauss_tau__(faxis, [T, Ntot, fsky_k[k], sigma, k])
-
+		tau += __gauss_tau__(faxis, [T, Ntot, fsky_k[k], sigma, k])
+        model = T * (1 - np.exp(-1.0 * tau))
 	return model - spec
 
 clickvalue = []
